@@ -190,7 +190,7 @@ weather/
 ├── package.json         # 项目依赖
 ├── vite.config.js       # Vite配置
 ├── README.md           # 项目说明
-└── 优化后的提示词.md    # Dify提示词模板
+└── 提示词.md    # Dify提示词模板
 ```
 
 ## 核心功能说明
