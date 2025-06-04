@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import OpenAI from 'openai';
 import {
   Container,
   TextField,
@@ -95,81 +94,60 @@ const DifyStreamingApp = () => {
     setLoading(true);
 
     try {
-      const openai = new OpenAI({
-        baseURL: import.meta.env.VITE_API_URL,
-        apiKey: import.meta.env.VITE_API_KEY,
-        dangerouslyAllowBrowser: true
-      });
-
-      const prompt = `请根据以下参数生成铁路运输恶劣天气应对通知：
+      const response = await fetch('http://localhost/v1/chat-messages', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer app-B7QKEh3geHdTJPQK4Y7c0al8',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          query: `请根据以下参数生成铁路运输恶劣天气应对通知：
 发文单位：${formData.unit}
 天气类型：${formData.weather}
 起始日期：${formData.start_date}
 结束日期：${formData.end_date}
 涉及线路：${formData.lines}
-附件信息：${formData.attachment}`;
-
-      const stream = await openai.chat.completions.create({
-        model: 'deepseek-chat',
-        messages: [
-          { 
-            role: 'system', 
-            content: `你是铁路车务调度部门的通知起草专家，负责撰写应对极端天气（如强降雨、寒潮、暴雪、台风、高温等）下的铁路运输组织通知。
-
-<think>
-用户提供了以下信息：
-- 发文单位：${formData.unit}
-- 天气类型：${formData.weather}  
-- 起始日期：${formData.start_date}
-- 结束日期：${formData.end_date}
-- 涉及线路：${formData.lines}
-- 附件信息：${formData.attachment}
-
-现在分析这个天气类型对铁路运输可能造的影响：
-1. 分析天气特点和危险性
-2. 评估对指定线路的潜在影响
-3. 制定针对性的应对措施
-4. 确保措施覆盖各个关键环节
-</think>
-
-请严格按照以下要求撰写通知：
-
-1. 顶部第一行为"通知"二字
-2. 通知标题格式：[${formData.unit}]关于积极做好[${formData.weather}]应对工作的通知
-3. 正文开头称呼："机关各科室、段属各站所："
-4. 简要说明气象预报、影响线路、气象威胁及措施总要求
-5. 应对措施要求：
-   - 使用阿拉伯数字编号：1. 2. 3.
-   - 每条包含加粗标题+正式内容
-   - 最少5段，最多7段
-   - 每段100-350字
-   - 涵盖值班值守、设备检查、调车安全、旅客服务、应急物资、舆情应对等
-6. 结尾落款：
-${formData.unit}
-${formData.end_date}
-${formData.attachment ? `\n附件：${formData.attachment}` : ''}
-7. 全文必须超过1000字
-8. 使用**粗体**突出重要内容
-9. 保持专业格式和用词
-10. 确保逻辑清晰、结构完整
-
-请严格按照以上要求输出专业、实用的铁路运输应对通知。`
+附件信息：${formData.attachment}`,
+          inputs: { 
+            unit: formData.unit,
+            weather: formData.weather,
+            start_date: formData.start_date,
+            end_date: formData.end_date,
+            lines: formData.lines,
+            attachment: formData.attachment
           },
-          { role: 'user', content: prompt }
-        ],
-        stream: true,
-        user: formData.user
+          response_mode: 'streaming',
+          user: formData.user
+        })
       });
 
-      let fullResponse = '';
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content || '';
-        fullResponse += content;
-        setStreamedText(prev => {
-          const updated = prev + content;
-          separateContent(updated);
-          return updated;
-        });
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split('\n\n');
+        buffer = chunks.pop() || '';
+
+        for (const chunk of chunks) {
+          if (chunk.startsWith('data: ')) {
+            const payload = JSON.parse(chunk.replace('data: ', ''));
+            if (
+              payload.event === 'message' ||
+              payload.event === 'agent_message'
+            ) {
+              setStreamedText(prev => {
+                const updated = prev + payload.answer;
+                separateContent(updated);
+                return updated;
+              });
+            }
+          }
+        }
       }
     } catch (error) {
       setStreamedText('❌ 出现错误，请检查 API 地址或网络连接');
